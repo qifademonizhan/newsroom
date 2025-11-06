@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>음악 재생 사이트</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#7c3aed;--muted:#98a6b3;--glass:rgba(255,255,255,0.04)}
+    *{box-sizing:border-box}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,'Noto Sans KR',sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#071028 0%,#071420 100%);color:#e6eef8;overflow:hidden}
+    .wrap{width:min(1080px,96%);background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));border-radius:12px;padding:20px;box-shadow:0 8px 30px rgba(2,6,23,0.7);display:grid;grid-template-columns:360px 1fr;gap:18px;position:relative}
+    .background-image{position:absolute;inset:0;background:url('https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2?auto=format&fit=crop&w=1280&q=80') center/cover no-repeat;filter:brightness(0.25) blur(6px);z-index:-1;transition:transform 5s ease;}
+    .panel{background:var(--card);border-radius:10px;padding:14px;backdrop-filter:blur(10px)}
+    .library{display:flex;flex-direction:column;gap:12px}
+    .cover{width:100%;aspect-ratio:1/1;border-radius:8px;background:linear-gradient(120deg,#0f1724,#061428);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:13px;overflow:hidden}
+    .cover img{width:100%;height:100%;object-fit:cover;border-radius:8px;transition:transform 0.3s ease;}
+    .meta{margin-top:10px}
+    .title{font-weight:600;cursor:pointer}
+    .title.editing{background:rgba(255,255,255,0.08);padding:2px 5px;border-radius:4px;}
+    .artist{color:var(--muted);font-size:13px}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:12px}
+    button{background:var(--glass);color:inherit;border:1px solid rgba(255,255,255,0.03);padding:10px;border-radius:8px;cursor:pointer}
+    button.large{padding:14px;border-radius:10px}
+    .playback{display:flex;flex-direction:column;gap:12px}
+    .progress{height:8px;background:rgba(255,255,255,0.04);border-radius:6px;position:relative;overflow:hidden}
+    .progress > i{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,var(--accent),#00d4ff)}
+    .time{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
+    .playlist{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow:auto;padding-right:6px}
+    .track{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer}
+    .track:hover{background:rgba(255,255,255,0.02)}
+    .track .dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,0.06)}
+    .track.active{background:linear-gradient(90deg,rgba(124,58,237,0.12),rgba(0,212,255,0.06));outline:1px solid rgba(124,58,237,0.12)}
+    .file-controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .bottom-row{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+    input[type=range]{width:160px}
+
+    @media(max-width:800px){
+      .wrap{grid-template-columns:1fr;padding-bottom:110px;}
+      .cover{aspect-ratio:16/9}
+      .controls{flex-wrap:wrap}
+      .file-controls{justify-content:space-between}
+      .playlist{max-height:unset}
+      .mini-player{position:fixed;left:0;right:0;bottom:0;height:72px;background:linear-gradient(180deg,rgba(11,18,32,0.96),rgba(6,10,20,0.98));display:flex;align-items:center;gap:12px;padding:8px 12px;border-top:1px solid rgba(255,255,255,0.03);z-index:50}
+      .mini-cover{width:56px;height:56px;border-radius:8px;overflow:hidden}
+      .mini-info{flex:1;min-width:0}
+      .mini-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .mini-artist{font-size:12px;color:var(--muted)}
+      .mini-controls{display:flex;gap:8px;align-items:center}
+      .mini-progress{height:4px;border-radius:4px;background:rgba(255,255,255,0.03);overflow:hidden;margin-top:6px}
+      .mini-progress > i{height:100%;display:block;width:0;background:linear-gradient(90deg,var(--accent),#00d4ff)}
+    }
+  </style>
+</head>
+<body>
+  <div class="background-image" id="bg"></div>
+  <main class="wrap">
+    <section class="panel">
+      <div class="library">
+        <div class="cover" id="cover"><img id="cover-img" src="https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2?auto=format&fit=crop&w=500&q=60" alt="앨범 커버"></div>
+        <div class="meta">
+          <div class="title" id="track-title">선택된 트랙 없음</div>
+          <div class="artist" id="track-artist">제목 누르면 제목 변경 ㄱㄴ</div>
+        </div>
+
+        <div class="controls">
+          <button id="prevBtn">⏮ 이전노래</button>
+          <button id="playBtn" class="large">▶ 일시정지</button>
+          <button id="nextBtn">⏭ 다음 노래</button>
+          <button id="shuffleBtn">첩</button>
+          <button id="loopBtn">컴퍼니!!</button>
+        </div>
+
+        <div class="file-controls">
+          <input type="file" id="fileInput" accept="audio/*" multiple style="display:none;">
+          <button id="addFileBtn">+ 파일로 추가</button>
+          <button id="addUrlBtn">+ URL/유튜브 추가</button>
+          <button id="clearBtn">목록 지우기</button>
+        </div>
+
+        <div style="margin-top:10px">
+          <div class="progress" id="progressBar" title="재생 진행">
+            <i></i>
+          </div>
+          <div class="time"><span id="curTime">00:00</span><span id="durTime">00:00</span></div>
+        </div>
+
+        <div class="bottom-row">
+          <div style="display:flex;align-items:center;gap:8px">
+            <label for="vol">🔊</label>
+            <input id="vol" type="range" min="0" max="1" step="0.01" value="1">
+          </div>
+          <div style="font-size:12px;color:var(--muted)">헤르메스 음악 사이트</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel playback">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0">재생목록</h3>
+        <small style="color:var(--muted)">파일 또는 유튜브 URL로 추가 가능</small>
+      </div>
+
+      <div class="playlist" id="playlist"></div>
+      <p style="color:var(--muted);font-size:13px;margin-top:10px">자동으로 자동재생 궁금한 거 있으면 이박 갠으로 문의</p>
+    </section>
+  </main>
+
+  <div class="mini-player" id="miniPlayer" style="display:none">
+    <div class="mini-cover"><img id="miniCoverImg" src="https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2?auto=format&fit=crop&w=500&q=60" style="width:100%;height:100%;object-fit:cover;border-radius:6px"></div>
+    <div class="mini-info">
+      <div class="mini-title" id="miniTitle">선택된 트랙 없음</div>
+      <div class="mini-artist" id="miniArtist">제목 누르면 제목 변경 ㄱㄴ</div>
+      <div class="mini-progress" style="width:100%"><i></i></div>
+    </div>
+    <div class="mini-controls">
+      <button id="miniPrev">⏮</button>
+      <button id="miniPlay">▶</button>
+      <button id="miniNext">⏭</button>
+    </div>
+  </div>
+
+  <audio id="audio" preload="auto" ></audio>
+
+  <script>
+
+    const audio = document.getElementById('audio');
+    const playBtn = document.getElementById('playBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const shuffleBtn = document.getElementById('shuffleBtn');
+    const loopBtn = document.getElementById('loopBtn');
+    const vol = document.getElementById('vol');
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = progressBar.querySelector('i');
+    const bg = document.getElementById('bg');
+
+    const coverImg = document.getElementById('cover-img');
+    const trackTitle = document.getElementById('track-title');
+    const trackArtist = document.getElementById('track-artist');
+    const playlistEl = document.getElementById('playlist');
+    const curTimeEl = document.getElementById('curTime');
+    const durTimeEl = document.getElementById('durTime');
+
+    const addUrlBtn = document.getElementById('addUrlBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const addFileBtn = document.getElementById('addFileBtn');
+    const fileInput = document.getElementById('fileInput');
+
+    const miniPlayer = document.getElementById('miniPlayer');
+    const miniCoverImg = document.getElementById('miniCoverImg');
+    const miniTitle = document.getElementById('miniTitle');
+    const miniArtist = document.getElementById('miniArtist');
+    const miniPlay = document.getElementById('miniPlay');
+    const miniPrev = document.getElementById('miniPrev');
+    const miniNext = document.getElementById('miniNext');
+    const miniProgressFill = document.querySelector('.mini-progress > i');
+
+    let tracks = []; 
+    let idx = 0;
+    let isShuffle = false;
+    let saveThrottle = null;
+    let lastSaveAt = 0;
+
+    const LS_KEY = 'hermes_state_v1';
+
+    function openDB(){
+      return new Promise((resolve,reject)=>{
+        const rq = indexedDB.open('hermes-audio-db',1);
+        rq.onupgradeneeded = e => { const db = e.target.result; if(!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs'); };
+        rq.onsuccess = e => resolve(e.target.result);
+        rq.onerror = e => reject(e.target.error);
+      });
+    }
+    async function idbPut(key, blob){
+      const db = await openDB();
+      return new Promise((res,rej)=>{
+        const tx = db.transaction('blobs','readwrite');
+        tx.objectStore('blobs').put(blob, key);
+        tx.oncomplete = ()=>res(); tx.onerror = ()=>rej(tx.error);
+      });
+    }
+    async function idbGet(key){
+      const db = await openDB();
+      return new Promise((res,rej)=>{
+        const tx = db.transaction('blobs','readonly');
+        const rq = tx.objectStore('blobs').get(key);
+        rq.onsuccess = ()=>res(rq.result);
+        rq.onerror = ()=>rej(rq.error);
+      });
+    }
+    async function idbDelete(key){
+      const db = await openDB();
+      return new Promise((res,rej)=>{
+        const tx = db.transaction('blobs','readwrite');
+        tx.objectStore('blobs').delete(key);
+        tx.oncomplete = ()=>res(); tx.onerror = ()=>rej(tx.error);
+      });
+    }
+
+    function formatTime(s){ if(isNaN(s)) return '00:00'; const m = Math.floor(s/60).toString().padStart(2,'0'); const sec = Math.floor(s%60).toString().padStart(2,'0'); return `${m}:${sec}`; }
+
+    async function loadState(){
+      try{
+        const raw = localStorage.getItem(LS_KEY);
+        if(!raw) return;
+        const state = JSON.parse(raw);
+        isShuffle = !!state.isShuffle;
+        audio.loop = !!state.loop;
+        vol.value = state.volume ?? 1;
+        audio.volume = Number(vol.value);
+        idx = Number.isFinite(state.idx) ? state.idx : 0;
+
+        tracks = state.tracks || [];
+
+        for(let t of tracks){
+          if(t.srcType === 'blob'){
+            try{
+              const blob = await idbGet(t.src);
+              if(blob){
+                t._objectUrl = URL.createObjectURL(blob);
+              } else {
+                t._missing = true;
+              }
+            }catch(e){ t._missing = true; }
+          }
+        }
+
+        renderPlaylist();
+        if(tracks.length>0){
+          await loadTrack(idx);
+          if(state.currentTime && audio.duration && !isNaN(state.currentTime)){
+            audio.currentTime = state.currentTime;
+          }
+        }
+        updateLoopShuffleUI();
+        updateMini();
+      }catch(e){console.warn('loadState error',e)}
+    }
+
+    function saveStateDebounced(){
+      if(Date.now() - lastSaveAt < 800) return; 
+      lastSaveAt = Date.now();
+      saveState().catch(e=>console.warn('saveState',e));
+    }
+
+    async function saveState(){
+      try{
+        const state = {
+          tracks: tracks.map(t=>({ id: t.id, title: t.title, artist: t.artist, cover: t.cover, srcType: t.srcType, src: t.src })),
+          idx, isShuffle, loop: audio.loop, volume: audio.volume, currentTime: audio.currentTime
+        };
+        localStorage.setItem(LS_KEY, JSON.stringify(state));
+      }catch(e){console.warn('save error',e)}
+    }
+
+    function renderPlaylist(){
+      playlistEl.innerHTML='';
+      tracks.forEach((t,i)=>{
+        const el = document.createElement('div');
+        el.className='track'+(i===idx?' active':'');
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:10px"><div class='dot'></div><div><div style='font-weight:600'>${escapeHtml(t.title||'제목 없음')}</div><div style='font-size:12px;color:var(--muted)'>${escapeHtml(t.artist||'')}</div></div></div>`;
+        el.addEventListener('click',async ()=>{ idx=i; await loadTrack(idx); play(); renderPlaylist(); updateMini(); saveStateDebounced(); });
+        playlistEl.appendChild(el);
+      });
+    }
+    
+    function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    async function loadTrack(i){
+      if(!tracks[i]){ clearTrackUI(); return; }
+      const t = tracks[i];
+      if(t.srcType === 'blob'){
+        if(!t._objectUrl){
+          try{
+            const blob = await idbGet(t.src);
+            if(blob){ t._objectUrl = URL.createObjectURL(blob); }
+            else { t._missing = true; }
+          }catch(e){ t._missing = true; }
+        }
+      }
+
+      const srcToUse = t.srcType === 'blob' ? (t._objectUrl || '') : t.src;
+      audio.src = srcToUse || '';
+      trackTitle.textContent = t.title || '제목 없음';
+      trackArtist.textContent = t.artist || '음악 파일';
+      coverImg.src = t.cover || 'https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2?auto=format&fit=crop&w=500&q=60';
+      bg.style.backgroundImage = `url('${coverImg.src}')`;
+      bg.style.transform = `scale(1.05) translate(${Math.random()*10-5}px, ${Math.random()*10-5}px)`;
+      renderPlaylist();
+      updateMini();
+    }
+
+    function clearTrackUI(){
+      trackTitle.textContent = '선택된 트랙 없음';
+      trackArtist.textContent = '제목 누르면 제목 변경 ㄱㄴ';
+      coverImg.src = 'https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2?auto=format&fit=crop&w=500&q=60';
+      audio.src = '';
+      renderPlaylist();
+      updateMini();
+    }
+
+    function play(){
+      audio.play().then(()=>{ playBtn.textContent='⏸️'; miniPlay.textContent='⏸️'; }).catch(()=>{ playBtn.textContent='▶️'; miniPlay.textContent='▶️'; });
+    }
+    function pause(){ audio.pause(); playBtn.textContent='▶️'; miniPlay.textContent='▶️'; }
+
+    function updateLoopShuffleUI(){ shuffleBtn.style.opacity = isShuffle?1:0.6; loopBtn.style.opacity = audio.loop?1:0.6; }
+
+    function updateMini(){ if(window.innerWidth <= 800 && tracks.length>0){ miniPlayer.style.display='flex'; const t = tracks[idx] || {}; miniCoverImg.src = t.cover || coverImg.src; miniTitle.textContent = t.title || '—'; miniArtist.textContent = t.artist || ''; miniProgressFill.style.width = (audio.currentTime/(audio.duration||1)*100)+'%'; } else { miniPlayer.style.display='none'; } }
+
+    playBtn.addEventListener('click',()=>{ audio.paused?play():pause(); });
+    miniPlay.addEventListener('click',()=>{ audio.paused?play():pause(); });
+    prevBtn.addEventListener('click',()=>{ if(tracks.length===0) return; idx=(idx-1+tracks.length)%tracks.length; loadTrack(idx).then(()=>{ play(); renderPlaylist(); saveStateDebounced(); updateMini(); }); });
+    nextBtn.addEventListener('click',()=>{ if(tracks.length===0) return; if(isShuffle){ idx=Math.floor(Math.random()*tracks.length); } else { idx=(idx+1)%tracks.length; } loadTrack(idx).then(()=>{ play(); renderPlaylist(); saveStateDebounced(); updateMini(); }); });
+    miniPrev.addEventListener('click',()=>prevBtn.click());
+    miniNext.addEventListener('click',()=>nextBtn.click());
+
+    shuffleBtn.addEventListener('click',()=>{ isShuffle=!isShuffle; updateLoopShuffleUI(); saveStateDebounced(); });
+    loopBtn.addEventListener('click',()=>{ audio.loop=!audio.loop; updateLoopShuffleUI(); saveStateDebounced(); });
+    vol.addEventListener('input',()=>{ audio.volume=Number(vol.value); saveStateDebounced(); });
+
+    audio.addEventListener('timeupdate',()=>{
+      const pct=audio.currentTime/(audio.duration||1)*100;
+      progressFill.style.width=pct+'%';
+      curTimeEl.textContent=formatTime(audio.currentTime);
+      durTimeEl.textContent=formatTime(audio.duration);
+      if(coverImg) coverImg.style.transform = `scale(${1 + Math.sin(audio.currentTime*2)*0.02})`;
+      bg.style.transform = `translate(${Math.sin(audio.currentTime*0.5)*5}px, ${Math.cos(audio.currentTime*0.5)*5}px) scale(1.05)`;
+      if(miniProgressFill) miniProgressFill.style.width = pct+'%';
+
+      if(!audio.paused && (Date.now() - lastSaveAt > 1500)){ saveStateDebounced(); }
+    });
+
+    progressBar.addEventListener('click',(e)=>{
+      const rect=progressBar.getBoundingClientRect();
+      const x=e.clientX-rect.left; const pct=x/rect.width; audio.currentTime=pct*(audio.duration||0); saveStateDebounced();
+    });
+
+    audio.addEventListener('ended',()=>{
+      if(tracks.length===0) return;
+      if(isShuffle){ idx=Math.floor(Math.random()*tracks.length);}else{ idx=(idx+1)%tracks.length; }
+      loadTrack(idx).then(()=>{ play(); renderPlaylist(); saveStateDebounced(); updateMini(); });
+    });
+
+    addFileBtn.addEventListener('click',()=>fileInput.click());
+    fileInput.addEventListener('change',async (e)=>{
+      const files=[...e.target.files];
+      for(const f of files){
+        const id = 'b_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+        try{
+          await idbPut(id, f);
+          const objUrl = URL.createObjectURL(f);
+          tracks.push({ id, title: f.name, artist: '이박 만세', srcType: 'blob', src: id, _objectUrl: objUrl });
+        }catch(err){
+          const objUrl = URL.createObjectURL(f);
+          tracks.push({ id, title: f.name, artist: '이박 만세', srcType: 'blob', src: id, _objectUrl: objUrl });
+        }
+      }
+      renderPlaylist();
+      if(tracks.length>0){ idx = tracks.length - files.length; await loadTrack(idx); play(); }
+      saveStateDebounced();
+    });
+
+    addUrlBtn.addEventListener('click',async ()=>{
+      const url = prompt('오디오 파일 URL을 붙여넣으세요. (유튜브는 직접 재생되지 않습니다)');
+      if(!url) return;
+      const name = url.split('/').pop().split('?')[0] || url;
+      tracks.push({ id: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,8), title: name, artist: 'URL 음악', srcType: 'url', src: url });
+      renderPlaylist();
+      if(tracks.length===1){ await loadTrack(0); play(); }
+      saveStateDebounced();
+    });
+
+    clearBtn.addEventListener('click',async ()=>{
+      if(!confirm('목록을 모두 지울까요?'))return;
+      for(const t of tracks){ if(t.srcType === 'blob'){ try{ await idbDelete(t.src); }catch(e){} if(t._objectUrl){ URL.revokeObjectURL(t._objectUrl); } } }
+      tracks = []; idx = 0; audio.pause(); audio.src = ''; renderPlaylist(); saveStateDebounced(); updateMini();
+    });
+
+    document.addEventListener('keydown',(e)=>{
+      if(e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
+      if(e.code === 'Space'){ e.preventDefault(); audio.paused?play():pause(); }
+      if(e.code === 'ArrowRight'){ audio.currentTime = Math.min(audio.duration, audio.currentTime + 10); }
+      if(e.code === 'ArrowLeft'){ audio.currentTime = Math.max(0, audio.currentTime - 10); }
+    });
+
+    trackTitle.addEventListener('click',()=>{
+      if(!tracks[idx]) return;
+      if(trackTitle.contentEditable === "true") return;
+      trackTitle.contentEditable = "true";
+      trackTitle.classList.add('editing');
+      trackTitle.focus();
+      const range = document.createRange(); range.selectNodeContents(trackTitle);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    });
+
+    trackTitle.addEventListener('keydown',(e)=>{
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        const txt = trackTitle.textContent.trim();
+        if(tracks[idx]) tracks[idx].title = txt || tracks[idx].title;
+        trackTitle.contentEditable = "false"; trackTitle.classList.remove('editing'); renderPlaylist(); saveStateDebounced();
+      }
+      if(e.key === 'Escape'){
+        e.preventDefault(); trackTitle.textContent = tracks[idx] ? tracks[idx].title : '선택된 트랙 없음'; trackTitle.contentEditable = "false"; trackTitle.classList.remove('editing');
+      }
+    });
+
+    window.addEventListener('beforeunload',()=>{ try{ saveState(); }catch(e){} });
+
+    (async ()=>{ await loadState();
+      if(tracks.length>0){ try{ await audio.play(); playBtn.textContent='⏸️'; }catch(e){ playBtn.textContent='▶️'; } }
+    })();
+
+  </script>
+</body>
+</html>
